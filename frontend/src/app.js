@@ -3,10 +3,8 @@ const APP_VERSION = 'v7';
 const pages = [
   { id: 'dashboard',   title: 'Dashboard',          subtitle: 'Overview of your BI transformation pipeline.',              icon: 'D', nav: 'Workspace' },
   { id: 'extract',     title: 'Extract Metadata',   subtitle: 'Parse .sql files to extract report name, ID, and query.',  icon: 'E', nav: 'Pipeline', input: '.sql',          output: '.xlsx' },
-  { id: 'rationalize', title: 'Rationalization',    subtitle: 'Remove duplicates and unused reports.',                    icon: 'R', nav: 'Pipeline', input: '.xlsx',         output: '.pbix' },
-  { id: 'lineage',     title: 'Lineage',            subtitle: 'Trace source-to-target column data flow.',                 icon: 'L', nav: 'Pipeline', input: '.sql',          output: '.xlsx' },
   { id: 'mapping',     title: 'Mapping',            subtitle: 'Map legacy tables and columns to EDH 2.0.',                icon: 'M', nav: 'Pipeline', input: '.xlsx',         output: '.xlsx' },
-  { id: 'mquery',      title: 'M Query Generation', subtitle: 'Auto-generate Power Query (M) code for transformation.',  icon: 'Q', nav: 'Pipeline', input: '.xlsx',         output: '.pbix' },
+  { id: 'mquery',      title: 'M Query Generation', subtitle: 'Auto-generate Power Query (M) code for transformation.',  icon: 'Q', nav: 'Pipeline', input: '.sql / .txt',   output: '.txt' },
   { id: 'dvs',         title: 'Data Validation',    subtitle: 'Compare legacy source vs EDH 2.0 target.',                icon: 'V', nav: 'Pipeline', input: '.pbix / .xlsx', output: '.xlsx / .html / .txt' },
 ];
 
@@ -182,10 +180,6 @@ function renderPage() {
       <div class="head-actions"><button class="btn outline sm" id="exp-audit">Export audit ZIP</button></div>
     </div>
     ${renderStepper(page.id)}
-    <div class="io-grid">
-      <div class="io-pill"><div class="io-pill-label">Input format</div><div class="io-pill-value">${page.input}</div></div>
-      <div class="io-pill"><div class="io-pill-label">Output format</div><div class="io-pill-value">${page.output}</div></div>
-    </div>
     <div id="step-panel"></div>
     <div class="footer-nav">
       <button class="btn outline" id="prev-step">&larr; Previous step</button>
@@ -202,8 +196,6 @@ function renderPage() {
   const panel = document.getElementById('step-panel');
   switch (page.id) {
     case 'extract':     renderExtract(panel);     break;
-    case 'rationalize': renderRationalize(panel); break;
-    case 'lineage':     renderLineage(panel);     break;
     case 'mapping':     renderMapping(panel);     break;
     case 'mquery':      renderMQuery(panel);      break;
     case 'dvs':         renderDVS(panel);         break;
@@ -304,7 +296,6 @@ function openAIModal() {
     const score = (blob) => tokens.filter(t => blob.includes(t)).length;
     const hits = { extract: [], lineage: [], mapping: [] };
     if (ws().saved.extract) ws().saved.extract.forEach(r => { const s = score((r['Report Name']+' '+r['Report ID']+' '+r['Query']).toLowerCase()); if (s) hits.extract.push({ row: r, score: s }); });
-    if (ws().saved.lineage) ws().saved.lineage.forEach(r => { const s = score((r.Report+' '+r['Source Table']+' '+r['Source Column']).toLowerCase()); if (s) hits.lineage.push({ row: r, score: s }); });
     if (ws().saved.mapping) Object.entries(ws().saved.mapping).forEach(([k, arr]) => (arr||[]).forEach(r => { const s = score(Object.values(r).join(' ').toLowerCase()); if (s) hits.mapping.push({ tab: k, row: r, score: s }); }));
     Object.values(hits).forEach(a => a.sort((x, y) => y.score - x.score));
     const total = hits.extract.length + hits.lineage.length + hits.mapping.length;
@@ -325,7 +316,6 @@ async function exportAuditZip() {
   const manifest = { workspace: ws().name, generatedAt: new Date().toISOString(), stages: {} };
   const addXlsx = (rows, name) => { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Sheet1'); zip.file(name, XLSX.write(wb, { bookType: 'xlsx', type: 'array' })); };
   if (ws().saved.extract)     { addXlsx(ws().saved.extract, '01_extracted_reports.xlsx'); manifest.stages.extract = { rows: ws().saved.extract.length }; }
-  if (ws().saved.rationalize) { zip.file('02_rationalized.pbix', JSON.stringify({ type: 'rationalized-pbix', rows: ws().saved.rationalize }, null, 2)); manifest.stages.rationalize = { rows: ws().saved.rationalize.length }; }
   if (ws().saved.lineage)     { addXlsx(ws().saved.lineage, '03_lineage_output.xlsx'); manifest.stages.lineage = { rows: ws().saved.lineage.length }; }
   if (ws().saved.mapping)     {
     if (ws().saved.mapping.table)  addXlsx(ws().saved.mapping.table,  '04a_table_mapping.xlsx');

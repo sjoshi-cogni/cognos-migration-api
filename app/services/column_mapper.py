@@ -82,7 +82,7 @@ def _get_db2_columns(catalog: str, schema: str, table: str) -> List[str]:
         if not wh_id and warehouses:
             wh_id = warehouses[0].id
         result = client.statement_execution.execute_statement(
-            warehouse_id=wh_id, statement=query, wait_timeout="5m"
+            warehouse_id=wh_id, statement=query, wait_timeout="50s"
         )
         if result.result and result.result.data_array:
             return [row[0] for row in result.result.data_array]

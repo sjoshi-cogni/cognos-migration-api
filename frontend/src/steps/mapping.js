@@ -1,191 +1,152 @@
 function renderMapping(panel) {
-  panel.innerHTML = `
-    <div class="tab-row" role="tablist">
-      <button class="tab active" data-tab="table">Table-Level Mapping</button>
-      <button class="tab" data-tab="column">Column-Level Mapping</button>
-    </div>
-    <div id="mapping-body"></div>
-  `;
   bindStepper();
-  let activeTab = 'table';
 
   function render() {
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === activeTab));
-    const body = document.getElementById('mapping-body');
-    const isTable    = activeTab === 'table';
-    const leftLabel  = isTable ? 'Legacy Table'  : 'Legacy Column';
-    const rightLabel = isTable ? 'EDH 2.0 Table' : 'Target Column';
-    const exampleL   = isTable ? 'customer'      : 'custid';
-    const exampleR   = isTable ? 'customermaster' : 'customer_id';
-    const history = ws().mappingHistory[activeTab] || [];
-    const currentMapping = ws().saved.mapping && ws().saved.mapping[activeTab];
+    const tableRows  = ws().saved.mapping?.table  || [];
+    const columnRows = ws().saved.mapping?.column || [];
+    const step1Done  = tableRows.length > 0;
+    const step2Done  = columnRows.length > 0;
 
-    body.innerHTML = `
-      <div class="panel">
-        <div class="section-head">
-          <h3 class="section-title">${isTable ? 'Map legacy tables → EDH 2.0' : 'Map legacy columns → EDH 2.0'}</h3>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <span class="pill warn">Example: ${exampleL} → ${exampleR}</span>
-            ${history.length >= 2 ? `<button class="btn outline sm" id="show-diff">Show version diff (${history.length})</button>` : ''}
+    panel.innerHTML = `
+      <div class="wizard">
+
+        <!-- STEP 1: Table Mapping -->
+        <div class="wizard-step ${step1Done ? 'wz-done' : 'wz-active'}">
+          <div class="wz-header">
+            <div class="wz-num">${step1Done ? '✓' : '1'}</div>
+            <div class="wz-info">
+              <span class="wz-title">Table Mapping</span>
+              <span class="wz-sub">Upload base tables file — maps Cognos tables → EDH 2.0 via Databricks</span>
+            </div>
+            <span class="pill ${step1Done ? 'passed' : 'warn'}">${step1Done ? 'done · ' + tableRows.length + ' rows' : 'pending'}</span>
+          </div>
+          <div class="wz-body">
+            ${step1Done ? `
+              <div class="note success">✓ ${tableRows.length} table mappings ready.</div>
+              <div class="buttons-row">
+                <button class="btn primary sm" id="wz-dl-table">↓ Download Table Mapping</button>
+                <button class="btn outline sm" id="wz-clear-table">Reset</button>
+              </div>
+              <div id="wz-preview-table" style="margin-top:14px;"></div>
+            ` : `
+              <div class="drop-zone" id="dz-table">
+                <div class="drop-icon">↑</div>
+                <div class="drop-title">Drop base tables .xlsx</div>
+                <div class="drop-sub">Must contain DB_Name, Schema_Name, Table_Name columns</div>
+                <input id="inp-table" type="file" accept=".xlsx,.xls" />
+              </div>
+              <div id="chip-table"></div>
+              <div id="wz-preview-table" style="margin-top:14px;"></div>
+            `}
           </div>
         </div>
-        <div class="drop-zone" id="dz-map-${activeTab}">
-          <div class="drop-icon">↑</div>
-          <div class="drop-title">Drop .xlsx file</div>
-          <div class="drop-sub">Auto-detects "${leftLabel}" and "${rightLabel}" columns.</div>
-          <input id="map-input-${activeTab}" type="file" accept=".xlsx,.xls" />
+
+        <div class="wz-connector ${step1Done ? 'wz-connector-active' : ''}"></div>
+
+        <!-- STEP 2: Column Mapping -->
+        <div class="wizard-step ${!step1Done ? 'wz-locked' : step2Done ? 'wz-done' : 'wz-active'}">
+          <div class="wz-header">
+            <div class="wz-num">${step2Done ? '✓' : '2'}</div>
+            <div class="wz-info">
+              <span class="wz-title">Column Mapping</span>
+              <span class="wz-sub">Upload base table columns file — AI-based matching with confidence scores</span>
+            </div>
+            <span class="pill ${step2Done ? 'passed' : !step1Done ? 'info' : 'warn'}">${step2Done ? 'done · ' + columnRows.length + ' rows' : !step1Done ? 'locked' : 'pending'}</span>
+          </div>
+          <div class="wz-body">
+            ${!step1Done ? `
+              <div class="note">Complete Step 1 first.</div>
+            ` : step2Done ? `
+              <div class="note success">✓ ${columnRows.length} column mappings ready.</div>
+              <div class="buttons-row">
+                <button class="btn primary sm" id="wz-dl-col">↓ Download Column Mapping</button>
+                <button class="btn outline sm" id="wz-clear-col">Reset</button>
+              </div>
+              <div id="wz-preview-col" style="margin-top:14px;"></div>
+            ` : `
+              <div class="note" style="margin-bottom:12px;">
+                Table mapping from Step 1 will be used automatically as <code>mapping_file</code>.
+              </div>
+              <div class="drop-zone" id="dz-column">
+                <div class="drop-icon">↑</div>
+                <div class="drop-title">Drop base table columns .xlsx</div>
+                <div class="drop-sub">Must contain DB_Name, Schema_Name, Table_Name, Column_Name columns</div>
+                <input id="inp-column" type="file" accept=".xlsx,.xls" />
+              </div>
+              <div id="chip-column"></div>
+              <div id="wz-preview-col" style="margin-top:14px;"></div>
+            `}
+          </div>
         </div>
-        <div id="map-chip-${activeTab}"></div>
-        <div class="buttons-row">
-          <button class="btn primary" id="dl-map-${activeTab}" ${currentMapping ? '' : 'disabled'}>↓ Download .xlsx</button>
-          <button class="btn outline" id="clear-map-${activeTab}">Reset</button>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="section-head"><h3 class="section-title">Mapping result</h3></div>
-        <div id="map-preview-${activeTab}"></div>
+
       </div>
     `;
 
-    const preview = document.getElementById('map-preview-' + activeTab);
-
-    if (currentMapping && currentMapping.length) {
-      preview.innerHTML = `<div class="note success">✓ ${currentMapping.length} mapping pair(s).</div><div id="map-tbl"></div>`;
-      renderSearchableTable(document.getElementById('map-tbl'), currentMapping, [leftLabel, rightLabel]);
+    // — Step 1 handlers —
+    if (step1Done) {
+      renderSearchableTable(document.getElementById('wz-preview-table'), tableRows, null);
+      document.getElementById('wz-dl-table').addEventListener('click', () => saveWorkbook(tableRows, 'table_mapping.xlsx'));
+      document.getElementById('wz-clear-table').addEventListener('click', () => {
+        delete ws().saved.mapping;
+        persist(); render(); renderNav();
+      });
     } else {
-      preview.innerHTML = '<div class="note">Upload a file to see the mapping.</div>';
+      attachDropZone('dz-table', 'inp-table', async (file) => {
+        document.getElementById('chip-table').innerHTML = fileChip(file.name);
+        document.getElementById('wz-preview-table').innerHTML = '<div class="note">⏳ Running table mapping...</div>';
+        try {
+          const fd = new FormData();
+          fd.append('lineage_file', file);
+          const data = await apiPost('/stage2/map-tables', fd);
+          ws().saved.mapping = ws().saved.mapping || {};
+          ws().saved.mapping.table = data.rows;
+          persist(); render(); renderNav();
+          logActivity('Table mapping: ' + data.mapped + ' mapped, ' + data.not_found + ' not found');
+          toast('Mapped ' + data.mapped + ' of ' + data.total + ' tables', 'success');
+        } catch (err) {
+          toast('API error: ' + err.message, 'error');
+          document.getElementById('wz-preview-table').innerHTML = '<div class="note error">Error: ' + escapeHtml(err.message) + '</div>';
+        }
+      });
     }
 
-    // --- TABLE TAB ---
-    attachDropZone('dz-map-table', 'map-input-table', async (file) => {
-      document.getElementById('map-chip-table').innerHTML = fileChip(file.name);
-      preview.innerHTML = '<div class="note">⏳ Calling API...</div>';
-      try {
-        const fd = new FormData();
-        fd.append('lineage_file', file);
-        const data = await apiPost('/stage2/map-tables', fd);
-        ws().saved.mapping = ws().saved.mapping || {};
-        ws().saved.mapping.table = data.rows;
-        ws().mappingHistory.table = ws().mappingHistory.table || [];
-        ws().mappingHistory.table.push({ time: new Date().toISOString(), rows: data.rows });
-        ws().mappingHistory.table = ws().mappingHistory.table.slice(-10);
-        persist(); render(); renderNav();
-        logActivity('Table mapping: ' + data.mapped + ' mapped, ' + data.not_found + ' not found');
-        toast('Mapped ' + data.mapped + ' of ' + data.total + ' tables', 'success');
-      } catch (err) {
-        toast('API error: ' + err.message, 'error');
-        preview.innerHTML = '<div class="note error">Error: ' + escapeHtml(err.message) + '</div>';
+    // — Step 2 handlers —
+    if (step1Done) {
+      if (step2Done) {
+        renderSearchableTable(document.getElementById('wz-preview-col'), columnRows, null);
+        document.getElementById('wz-dl-col').addEventListener('click', () => saveWorkbook(columnRows, 'column_mapping.xlsx'));
+        document.getElementById('wz-clear-col').addEventListener('click', () => {
+          delete ws().saved.mapping.column;
+          persist(); render(); renderNav();
+        });
+      } else {
+        attachDropZone('dz-column', 'inp-column', async (file) => {
+          document.getElementById('chip-column').innerHTML = fileChip(file.name);
+          document.getElementById('wz-preview-col').innerHTML = '<div class="note">⏳ Running column mapping...</div>';
+          try {
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tableRows), 'Sheet1');
+            const mappingFile = new File(
+              [XLSX.write(wb, { bookType: 'xlsx', type: 'array' })],
+              'table_mapping.xlsx',
+              { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+            );
+            const fd = new FormData();
+            fd.append('lineage_file', file);
+            fd.append('mapping_file', mappingFile);
+            const data = await apiPost('/stage2/map-columns', fd);
+            ws().saved.mapping.column = data.rows;
+            persist(); render(); renderNav();
+            logActivity('Column mapping: ' + data.matched + ' matched, ' + data.low_confidence + ' low conf, ' + data.unmapped + ' unmapped');
+            toast('Matched: ' + data.matched + ' | Low conf: ' + data.low_confidence + ' | Unmapped: ' + data.unmapped, 'success');
+          } catch (err) {
+            toast('API error: ' + err.message, 'error');
+            document.getElementById('wz-preview-col').innerHTML = '<div class="note error">Error: ' + escapeHtml(err.message) + '</div>';
+          }
+        });
       }
-    });
-
-    // --- COLUMN TAB ---
-    // Column mapping needs TWO files: lineage .xlsx + table mapping .xlsx
-    // The current UI only has one drop zone for column tab.
-    // We need to track both files separately before calling the API.
-    attachDropZone('dz-map-column', 'map-input-column', async (file) => {
-      document.getElementById('map-chip-column').innerHTML = fileChip(file.name);
-
-      // lineage file = what user drops here
-      // mapping file = table mapping output stored from previous tab
-      const tableMappingRows = ws().saved.mapping && ws().saved.mapping.table;
-      if (!tableMappingRows || !tableMappingRows.length) {
-        toast('Run Table Mapping first — its output is needed as mapping_file', 'warn');
-        preview.innerHTML = '<div class="note warn">⚠ Complete Table-Level Mapping tab first.</div>';
-        return;
-      }
-
-      preview.innerHTML = '<div class="note">⏳ Calling API...</div>';
-      try {
-        // Convert stored table mapping rows back to xlsx blob for the API
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tableMappingRows), 'Sheet1');
-        const wbBlob = new Blob(
-          [XLSX.write(wb, { bookType: 'xlsx', type: 'array' })],
-          { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
-        );
-        const mappingFile = new File([wbBlob], 'table_mapping.xlsx');
-
-        const fd = new FormData();
-        fd.append('lineage_file', file);       // lineage .xlsx the user uploads
-        fd.append('mapping_file', mappingFile); // table mapping rebuilt from saved state
-        const data = await apiPost('/stage2/map-columns', fd);
-        ws().saved.mapping = ws().saved.mapping || {};
-        ws().saved.mapping.column = data.rows;
-        ws().mappingHistory.column = ws().mappingHistory.column || [];
-        ws().mappingHistory.column.push({ time: new Date().toISOString(), rows: data.rows });
-        ws().mappingHistory.column = ws().mappingHistory.column.slice(-10);
-        persist(); render(); renderNav();
-        logActivity('Column mapping: ' + data.matched + ' matched, ' + data.low_confidence + ' low conf, ' + data.unmapped + ' unmapped');
-        toast('Matched: ' + data.matched + ' | Low conf: ' + data.low_confidence + ' | Unmapped: ' + data.unmapped, 'success');
-      } catch (err) {
-        toast('API error: ' + err.message, 'error');
-        preview.innerHTML = '<div class="note error">Error: ' + escapeHtml(err.message) + '</div>';
-      }
-    });
-
-    document.getElementById('dl-map-' + activeTab).addEventListener('click', () => {
-      const d = ws().saved.mapping && ws().saved.mapping[activeTab];
-      if (d) saveWorkbook(d, (isTable ? 'table' : 'column') + '_mapping.xlsx');
-    });
-
-    document.getElementById('clear-map-' + activeTab).addEventListener('click', () => {
-      if (ws().saved.mapping) delete ws().saved.mapping[activeTab];
-      persist(); render(); renderNav();
-    });
-
-    const diffBtn = document.getElementById('show-diff');
-    if (diffBtn) diffBtn.addEventListener('click', () => showMappingDiff(activeTab, leftLabel, rightLabel));
+    }
   }
 
-  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => { activeTab = t.dataset.tab; render(); }));
   render();
-}
-
-function showMappingDiff(tab, leftLabel, rightLabel) {
-  const history = ws().mappingHistory[tab];
-  const prev = history[history.length - 2];
-  const curr = history[history.length - 1];
-  const prevMap = new Map(prev.rows.map(r => [r[leftLabel], r[rightLabel]]));
-  const currMap = new Map(curr.rows.map(r => [r[leftLabel], r[rightLabel]]));
-  const allKeys = Array.from(new Set([...prevMap.keys(), ...currMap.keys()]));
-
-  const rows = allKeys.map(k => {
-    const p = prevMap.get(k), c = currMap.get(k);
-    const status = p === undefined ? 'added' : c === undefined ? 'removed' : p !== c ? 'modified' : 'unchanged';
-    return { [leftLabel]: k, Previous: p == null ? '' : p, Current: c == null ? '' : c, Status: status };
-  });
-
-  const added    = rows.filter(r => r.Status === 'added').length;
-  const removed  = rows.filter(r => r.Status === 'removed').length;
-  const modified = rows.filter(r => r.Status === 'modified').length;
-
-  openModal(`
-    <h3>Mapping version diff</h3>
-    <p>Comparing v${history.length - 1} → v${history.length} (${fmtTime(prev.time)} vs ${fmtTime(curr.time)})</p>
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <span class="pill passed">+${added} added</span>
-      <span class="pill failed">-${removed} removed</span>
-      <span class="pill warn">~${modified} modified</span>
-    </div>
-    <div class="table-wrapper" style="max-height:50vh;">
-      <table class="table">
-        <thead><tr><th>${leftLabel}</th><th>Previous</th><th>Current</th><th>Status</th></tr></thead>
-        <tbody>
-          ${rows.map(r => `
-            <tr class="${r.Status === 'added' ? 'diff-add' : r.Status === 'removed' ? 'diff-del' : r.Status === 'modified' ? 'diff-mod' : ''}">
-              <td>${escapeHtml(r[leftLabel])}</td>
-              <td>${escapeHtml(r.Previous)}</td>
-              <td>${escapeHtml(r.Current)}</td>
-              <td><span class="pill ${r.Status === 'added' ? 'passed' : r.Status === 'removed' ? 'failed' : r.Status === 'modified' ? 'warn' : 'info'}">${r.Status}</span></td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-    <div class="modal-actions">
-      <button class="btn outline" id="diff-close">Close</button>
-      <button class="btn primary" id="diff-export">Export diff .xlsx</button>
-    </div>
-  `);
-  document.getElementById('diff-close').addEventListener('click', closeModal);
-  document.getElementById('diff-export').addEventListener('click', () => { saveWorkbook(rows, tab + '_mapping_diff.xlsx'); closeModal(); });
 }

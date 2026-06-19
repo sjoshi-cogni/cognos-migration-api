@@ -949,7 +949,7 @@ label.field {
 .ai-fab {
   position: fixed;
   bottom: 32px;
-  left: 32px;
+  right: 32px;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -1054,4 +1054,113 @@ label.field {
   .step-info { display: none; }
   .content { padding: 20px; }
   .page-head { padding: 12px 0; }
+}
+
+/* ============ MAPPING WIZARD ============ */
+.wizard {
+  display: flex;
+  flex-direction: column;
+}
+
+.wizard-step {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.wizard-step.wz-active {
+  border-color: rgba(99, 102, 241, 0.45);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08), var(--shadow);
+}
+
+.wizard-step.wz-done {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.wizard-step.wz-locked {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.wz-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+}
+
+.wz-num {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  border: 2px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.wizard-step.wz-active .wz-num {
+  background: var(--gradient);
+  border-color: transparent;
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+.wizard-step.wz-done .wz-num {
+  background: var(--success);
+  border-color: transparent;
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.wz-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wz-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.wz-sub {
+  font-size: 11px;
+  color: var(--text-mute);
+}
+
+.wz-body {
+  padding: 20px;
+}
+
+.wz-connector {
+  width: 2px;
+  height: 24px;
+  background: var(--border-strong);
+  margin: 0 auto;
+  border-radius: 2px;
+  transition: background 0.3s ease;
+}
+
+.wz-connector.wz-connector-active {
+  background: var(--success);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.wz-dz-locked {
+  pointer-events: none;
+  opacity: 0.4;
 }

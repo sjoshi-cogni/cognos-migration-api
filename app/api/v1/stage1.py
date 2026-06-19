@@ -7,8 +7,10 @@ from app.services.cognos_cleanup import read_text
 from app.services.table_extractor import extract_tables
 from app.services.lineage_extractor import extract_lineage
 from app.schemas.stage1 import TableExtractionResponse, LineageExtractionResponse
+from app.core.logging import get_logger  # ← add this
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 @router.post("/extract-tables", response_model=TableExtractionResponse)
 async def extract_tables_endpoint(files: List[UploadFile] = File(...)):
@@ -17,7 +19,9 @@ async def extract_tables_endpoint(files: List[UploadFile] = File(...)):
         if not file.filename.lower().endswith(".sql"):
             continue
         raw = await file.read()
+        #logger.info(f"File: {file.filename} | Size: {len(raw)} bytes | First bytes: {raw[:4].hex()}")
         sql = read_text(raw)
+        #logger.info(f"Decoded preview: {repr(sql[:200])}")
         report_name = file.filename.rsplit(".", 1)[0]
         all_rows.extend(extract_tables(sql, report_name))
 
@@ -65,6 +69,14 @@ async def extract_lineage_endpoint(files: List[UploadFile] = File(...)):
         sql = read_text(raw)
         report_name = file.filename.rsplit(".", 1)[0]
         all_rows.extend(extract_lineage(sql, report_name))
+
+        seen = set()
+        unique_rows = []
+        for row in all_rows:
+            key = (row["Report_Name"], row["Full_Table_Ref"], row.get("Column_Name", ""))
+            if key not in seen:
+                seen.add(key)
+                unique_rows.append(row)
 
     return LineageExtractionResponse(total_rows=len(all_rows), rows=all_rows)
 

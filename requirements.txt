@@ -11,3 +11,4 @@ scipy==1.13.0
 numpy==1.26.4
 databricks-sdk==0.26.0
 python-multipart==0.0.9
+python-dotenv

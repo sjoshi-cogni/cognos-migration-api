@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Any
 
 class ConversionResult(BaseModel):
     filename: str

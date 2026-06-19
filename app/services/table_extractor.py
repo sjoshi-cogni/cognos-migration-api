@@ -73,11 +73,15 @@ def extract_tables(sql: str, report_name: str) -> List[Dict]:
         parts = obj.split(".")
         if len(parts) < 3:
             continue
+        # Add this missing guard from original script
+        if len(parts) == 2 and parts[0].islower():
+            continue
         info = split_table(obj)
         if info["Table_Name"].lower() in SKIP_TABLES:
             continue
         seen.add(obj)
         rows.append({"Report_Name": report_name, **info})
+
 
     logger.info(f"{report_name}: {len(rows)} tables extracted")
     return rows
