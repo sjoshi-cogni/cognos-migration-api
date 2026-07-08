@@ -164,8 +164,7 @@ def build_m_query(sql: str, list_patterns: List, date_patterns: List, date_claus
     for col, prompt in list_patterns:
         pname = re.sub(r'\s+', '', prompt).lower()
         col_name = col.split(".")[-1]
-        
-        # Normalize the column name to match the updated Databricks naming scheme
+
         if "source" in col_name.lower() or col_name == "ID":
             col_name = "src_sys_id"
         elif "event" in col_name.lower() or "code" in col_name.lower():
@@ -181,7 +180,6 @@ def build_m_query(sql: str, list_patterns: List, date_patterns: List, date_claus
         then " AND {col_name} IN (" & combinedlist_{pname} & ")"
         else "",
     """)
-
         injections.append(f"where{pname}")
 
     date_clause_block = ""
@@ -195,16 +193,28 @@ def build_m_query(sql: str, list_patterns: List, date_patterns: List, date_claus
 
     escaped_sql = sql.strip().replace('"', '""')
 
+    # Extract just the hostname from DATABRICKS_HOST (strip https://)
+    host = re.sub(r'^https?://', '', DATABRICKS_HOST).rstrip('/')
+    # Warehouse ID is the last segment of the HTTP path
+    warehouse_id = DATABRICKS_WAREHOUSE.split("/")[-1]
+
     return f"""let
 {''.join(where_defs)}
 {date_clause_block}
 
     query = "{escaped_sql}"{injection_str},
 
-    finalsource = Databricks.Query(
-        "{DATABRICKS_HOST}",
-        "{DATABRICKS_WAREHOUSE}",
-        [Query = query]
+    Source = Databricks.Catalogs(
+        "{host}",
+        "/sql/1.0/warehouses/{warehouse_id}",
+        [EnableAutomaticProxyDiscovery = false]
+    ),
+
+    finalsource = Value.NativeQuery(
+        Source,
+        query,
+        null,
+        [EnableFolding = false]
     )
 
 in

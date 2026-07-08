@@ -5,9 +5,11 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List
 from app.services.sql_converter import load_mapping_from_workbook, load_date_clause_from_workbook, convert_sql_to_mquery
-from app.schemas.stage3 import ConversionResponse
+from app.services.llm_sql_fixer import fix_sql_with_llm, extract_sql_from_mquery, inject_fixed_sql_into_mquery
+from app.schemas.stage3 import ConversionResponse, LLMFixResponse, LLMFixResult
 
 router = APIRouter()
+
 
 @router.post("/convert", response_model=ConversionResponse)
 async def convert_sql_files(
@@ -35,6 +37,7 @@ async def convert_sql_files(
         results.append(meta)
 
     return ConversionResponse(total_files=len(results), results=results)
+
 
 @router.post("/convert/download")
 async def convert_and_download(
@@ -65,3 +68,80 @@ async def convert_and_download(
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=mquery_outputs.zip"}
     )
+
+
+@router.post("/convert-and-fix", response_model=LLMFixResponse)
+async def convert_and_fix(
+    sql_files: List[UploadFile] = File(...),
+    mapping_file: UploadFile = File(...),
+    prompt_file: UploadFile = File(None),
+):
+    """Convert SQL → M-Query, then use Databricks LLM + EXPLAIN validation loop to fix the SQL."""
+    if not mapping_file.filename.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="mapping_file must be .xlsx")
+
+    mapping_wb = openpyxl.load_workbook(io.BytesIO(await mapping_file.read()))
+    table_mapping, column_mapping = load_mapping_from_workbook(mapping_wb)
+
+    date_clause = ""
+    if prompt_file:
+        prompt_wb = openpyxl.load_workbook(io.BytesIO(await prompt_file.read()))
+        date_clause = load_date_clause_from_workbook(prompt_wb)
+
+    results = []
+    for sql_file in sql_files:
+        if not sql_file.filename.lower().endswith(".sql"):
+            continue
+        raw = await sql_file.read()
+        mquery, meta = convert_sql_to_mquery(raw, sql_file.filename, table_mapping, column_mapping, date_clause)
+
+        sql_portion = extract_sql_from_mquery(mquery)
+        if sql_portion:
+            fixed_sql, summary, success = fix_sql_with_llm(sql_portion)
+            final_mquery = inject_fixed_sql_into_mquery(mquery, fixed_sql) if success else mquery
+        else:
+            fixed_sql, summary, success = None, "Could not extract SQL from generated M-Query.", False
+            final_mquery = mquery
+
+        results.append(LLMFixResult(
+            filename=meta["filename"],
+            status="llm_fixed" if success else "llm_failed",
+            output_filename=meta["output_filename"].replace("_FINAL.txt", "_LLM_FIXED.txt"),
+            list_prompts_found=meta["list_prompts_found"],
+            date_prompts_found=meta["date_prompts_found"],
+            llm_success=success,
+            llm_summary=summary,
+            fixed_mquery=final_mquery,
+        ))
+
+    return LLMFixResponse(total_files=len(results), results=results)
+@router.post("/validate-mquery", response_model=LLMFixResponse)
+async def validate_mquery(
+    mquery_files: List[UploadFile] = File(...),
+):
+    """Accept already-generated M-Query .txt files, extract SQL, fix with LLM, return fixed M-Query."""
+    results = []
+    for mquery_file in mquery_files:
+        if not mquery_file.filename.lower().endswith(".txt"):
+            continue
+        mquery = (await mquery_file.read()).decode("utf-8", errors="replace")
+
+        sql_portion = extract_sql_from_mquery(mquery)
+        if sql_portion:
+            fixed_sql, summary, success = fix_sql_with_llm(sql_portion)
+            final_mquery = inject_fixed_sql_into_mquery(mquery, fixed_sql) if success else mquery
+        else:
+            summary, success, final_mquery = "Could not extract SQL from M-Query.", False, mquery
+
+        results.append(LLMFixResult(
+            filename=mquery_file.filename,
+            status="llm_fixed" if success else "llm_failed",
+            output_filename=mquery_file.filename.replace(".txt", "_AI_FIXED.txt"),
+            list_prompts_found=0,
+            date_prompts_found=0,
+            llm_success=success,
+            llm_summary=summary,
+            fixed_mquery=final_mquery,
+        ))
+
+    return LLMFixResponse(total_files=len(results), results=results)

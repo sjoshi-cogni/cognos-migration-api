@@ -91,6 +91,11 @@ function parseFileToRows(file) {
     }
   });
 }
+function downloadText(content, filename) {
+  const blob = new Blob([content], { type: 'text/plain' });
+  downloadBlob(blob, filename);
+}
+
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);

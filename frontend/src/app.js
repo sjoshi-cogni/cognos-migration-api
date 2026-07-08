@@ -1,12 +1,13 @@
 const APP_VERSION = 'v7';
 
 const pages = [
-  { id: 'dashboard',   title: 'Dashboard',          subtitle: 'Overview of your BI transformation pipeline.',              icon: 'D', nav: 'Workspace' },
-  { id: 'extract',     title: 'Extract Metadata',   subtitle: 'Parse .sql files to extract report name, ID, and query.',  icon: 'E', nav: 'Pipeline', input: '.sql',          output: '.xlsx' },
-  { id: 'mapping',     title: 'Mapping',            subtitle: 'Map legacy tables and columns to EDH 2.0.',                icon: 'M', nav: 'Pipeline', input: '.xlsx',         output: '.xlsx' },
-  { id: 'mquery',      title: 'M Query Generation', subtitle: 'Auto-generate Power Query (M) code for transformation.',  icon: 'Q', nav: 'Pipeline', input: '.sql / .txt',   output: '.txt' },
-  { id: 'dvs',         title: 'Data Validation',    subtitle: 'Compare legacy source vs EDH 2.0 target.',                icon: 'V', nav: 'Pipeline', input: '.pbix / .xlsx', output: '.xlsx / .html / .txt' },
+  { id: 'dashboard',     title: 'Dashboard',              subtitle: 'Overview of your BI transformation pipeline.',             icon: 'D', nav: 'Workspace' },
+  { id: 'extract',       title: 'Extract Metadata',       subtitle: 'Parse .sql files to extract report name, ID, and query.', icon: 'E', nav: 'Pipeline', input: '.sql',        output: '.xlsx' },
+  { id: 'mapping',       title: 'Mapping',                subtitle: 'Map legacy tables and columns to EDH 2.0.',               icon: 'M', nav: 'Pipeline', input: '.xlsx',       output: '.xlsx' },
+  { id: 'mquery',        title: 'M-Query Generation',     subtitle: 'Auto-generate Power Query (M) code for transformation.',  icon: 'Q', nav: 'Pipeline', input: '.sql / .txt', output: '.txt' },
+  { id: 'aivalidation',  title: 'M-Query AI Validation',  subtitle: 'Fix and validate M-Query SQL using Databricks AI.',       icon: 'A', nav: 'Pipeline', input: 'auto',        output: '.txt' },
 ];
+
 
 const pipelineIds = pages.filter(p => p.id !== 'dashboard').map(p => p.id);
 
@@ -123,9 +124,6 @@ function renderNav() {
 function renderFooter() {
   const el = document.getElementById('sidebar-footer');
   el.innerHTML = `
-    <div class="auto-chain-toggle ${state.autoChain ? 'on' : ''}" id="chain-toggle">
-      <span>Auto-chain steps</span><span class="theme-switch"></span>
-    </div>
     <div class="theme-toggle" id="theme-toggle">
       <span>${state.theme === 'dark' ? '🌙' : '☀'} ${state.theme === 'dark' ? 'Dark theme' : 'Light theme'}</span>
       <span class="theme-switch"></span>
@@ -137,13 +135,8 @@ function renderFooter() {
     document.body.setAttribute('data-theme', state.theme);
     persist(); renderFooter(); toast('Theme: ' + state.theme, 'info');
   });
-  document.getElementById('chain-toggle').addEventListener('click', () => {
-    state.autoChain = !state.autoChain;
-    persist(); renderFooter();
-    toast('Auto-chain ' + (state.autoChain ? 'enabled' : 'disabled'), 'info');
-    renderPage();
-  });
 }
+
 
 function setActive(id) {
   state.activeId = id; persist(); renderNav(); renderPage();
@@ -195,11 +188,12 @@ function renderPage() {
 
   const panel = document.getElementById('step-panel');
   switch (page.id) {
-    case 'extract':     renderExtract(panel);     break;
-    case 'mapping':     renderMapping(panel);     break;
-    case 'mquery':      renderMQuery(panel);      break;
-    case 'dvs':         renderDVS(panel);         break;
+    case 'extract':      renderExtract(panel);      break;
+    case 'mapping':      renderMapping(panel);      break;
+    case 'mquery':       renderMQuery(panel);       break;
+    case 'aivalidation': renderAIValidation(panel); break;
   }
+
 }
 
 function renderDashboard() {
@@ -207,8 +201,7 @@ function renderDashboard() {
   const total = pipelineIds.length;
   const pct = Math.round((completed / total) * 100);
   const countMappings = () => { const m = ws().saved.mapping; return m ? (m.table||[]).length + (m.column||[]).length : 0; };
-  const valSummary = () => { const s = ws().saved.dvs; if (!s) return ''; return s.summary.filter(r => r.Status === 'passed').length + ' / ' + s.summary.length + ' checks passed'; };
-
+  const valSummary = () => { const s = ws().saved.aivalidation; if (!s) return ''; return s.results.filter(r => r.llm_success).length + ' / ' + s.total_files + ' AI fixed'; };
   return `
     <div class="page-head">
       <div>
@@ -224,17 +217,17 @@ function renderDashboard() {
     </div>
     <div class="quick-start">
       <h2>Start a new transformation</h2>
-      <p>Auto-chain is ${state.autoChain ? 'ON' : 'OFF'}.</p>
       <div class="quick-actions">
         <button class="btn secondary" id="qs-start" style="background:rgba(0,0,0,0.25);color:white;">Begin pipeline →</button>
-        <button class="btn secondary" id="qs-dvs"   style="background:rgba(0,0,0,0.25);color:white;">Run validation only →</button>
+        <button class="btn secondary" id="qs-dvs" style="background:rgba(0,0,0,0.25);color:white;">Run AI validation →</button>
       </div>
     </div>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">Pipeline progress</div><div class="kpi-value">${pct}%</div><div class="kpi-trend">${completed} of ${total} stages complete</div></div>
       <div class="kpi-card"><div class="kpi-label">Reports extracted</div><div class="kpi-value">${(ws().saved.extract||[]).length}</div><div class="kpi-trend flat">${ws().saved.extract ? 'metadata ready' : 'no extraction yet'}</div></div>
       <div class="kpi-card"><div class="kpi-label">Mapped objects</div><div class="kpi-value">${countMappings()}</div><div class="kpi-trend flat">tables + columns</div></div>
-      <div class="kpi-card"><div class="kpi-label">Validation status</div><div class="kpi-value">${ws().saved.dvs ? 'Ready' : 'Pending'}</div><div class="kpi-trend flat">${ws().saved.dvs ? valSummary() : 'awaiting comparison'}</div></div>
+      <div class="kpi-card"><div class="kpi-label">AI Validation</div><div class="kpi-value">${ws().saved.aivalidation ? 'Ready' : 'Pending'}</div><div class="kpi-trend flat">${ws().saved.aivalidation ? valSummary() : 'awaiting AI fix'}</div></div>
+
     </div>
     <div class="dash-grid">
       <div class="dash-card">
@@ -259,7 +252,7 @@ function renderDashboard() {
 
 function bindDashboard() {
   document.getElementById('qs-start').addEventListener('click', () => setActive('extract'));
-  document.getElementById('qs-dvs').addEventListener('click', () => setActive('dvs'));
+  document.getElementById('qs-dvs').addEventListener('click', () => setActive('aivalidation'));
   document.getElementById('exp-audit').addEventListener('click', exportAuditZip);
   document.getElementById('clear-ws').addEventListener('click', () => {
     if (!confirm('Reset all stage outputs and activity for this workspace?')) return;
@@ -322,8 +315,15 @@ async function exportAuditZip() {
     if (ws().saved.mapping.column) addXlsx(ws().saved.mapping.column, '04b_column_mapping.xlsx');
     manifest.stages.mapping = { tablePairs: (ws().saved.mapping.table||[]).length, columnPairs: (ws().saved.mapping.column||[]).length };
   }
-  if (ws().saved.mquery)      { zip.file('05_generated_query.m', ws().saved.mquery.query); zip.file('05_generated_query.pbix', JSON.stringify({ type: 'm-query-pbix', query: ws().saved.mquery.query }, null, 2)); manifest.stages.mquery = { sourceFile: ws().saved.mquery.fileName }; }
-  if (ws().saved.dvs)         { addXlsx(ws().saved.dvs.summary, '06_validation_output.xlsx'); manifest.stages.dvs = { passed: ws().saved.dvs.summary.filter(s => s.Status === 'passed').length, total: ws().saved.dvs.summary.length }; }
+  // AFTER
+  if (ws().saved.mquery)      { manifest.stages.mquery = { files: ws().saved.mquery.total_files }; }
+  if (ws().saved.aivalidation) {
+    ws().saved.aivalidation.results.forEach(r => {
+      if (r.fixed_mquery) zip.file('ai_fixed/' + r.output_filename, r.fixed_mquery);
+    });
+    manifest.stages.aivalidation = { total: ws().saved.aivalidation.total_files, fixed: ws().saved.aivalidation.results.filter(r => r.llm_success).length };
+  }
+
   zip.file('manifest.json', JSON.stringify(manifest, null, 2));
   if (!Object.keys(manifest.stages).length) { toast('Nothing to export yet', 'warn'); return; }
   const blob = await zip.generateAsync({ type: 'blob' });

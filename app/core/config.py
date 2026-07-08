@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     DATABRICKS_TOKEN: str = ""
     DATABRICKS_HTTP_PATH: str = ""
     DATABRICKS_SERVER_HOSTNAME: str = ""
+    DATABRICKS_LLM_ENDPOINT: str = "databricks-meta-llama-3-3-70b-instruct"
     UPLOAD_DIR: str = "uploads"
     OUTPUT_DIR: str = "outputs"
     CONFIDENCE_THRESHOLD: int = 40

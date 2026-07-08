@@ -38,7 +38,6 @@ function renderMQuery(panel) {
       </div>
       <div class="buttons-row" style="margin-top:16px;">
         <button class="btn primary" id="mq-convert">Generate M-Query</button>
-        <button class="btn secondary" id="mq-download" ${ws().saved.mquery ? '' : 'disabled'}>↓ Download ZIP</button>
         <button class="btn outline" id="mq-clear">Reset</button>
       </div>
     </div>
@@ -53,13 +52,12 @@ function renderMQuery(panel) {
   let mappingFile = null;
   let promptFile = null;
   const result = document.getElementById('mq-result');
-  const dlBtn = document.getElementById('mq-download');
 
   function paint() {
-    if (!ws().saved.mquery) { result.innerHTML = '<div class="note">Upload files and click Convert.</div>'; return; }
+    if (!ws().saved.mquery) { result.innerHTML = '<div class="note">Upload files and click Generate M-Query.</div>'; return; }
     const results = ws().saved.mquery.results;
     result.innerHTML = `
-      <div class="note success">✓ Converted ${ws().saved.mquery.total_files} file(s).</div>
+      <div class="note success">✓ Converted ${ws().saved.mquery.total_files} file(s). Proceeding to AI Validation →</div>
       <div class="table-wrapper"><table class="table">
         <thead><tr><th>File</th><th>Output</th><th>Status</th><th>List prompts</th><th>Date prompts</th></tr></thead>
         <tbody>${results.map(r => `
@@ -103,29 +101,46 @@ function renderMQuery(panel) {
     if (!mappingFile) { toast('Upload the mapping .xlsx file', 'warn'); return; }
     result.innerHTML = '<div class="note">⏳ Converting...</div>';
     try {
-      const data = await apiPost('/stage3/convert', buildFormData());
+      // single request — download endpoint returns the actual M-Query files
+      const zipBlob = await apiDownloadBlob('/stage3/convert/download', buildFormData());
+      const zip = await JSZip.loadAsync(zipBlob);
+
+      const generated = [];
+      for (const [filename, zipEntry] of Object.entries(zip.files)) {
+        const text = await zipEntry.async('string');
+        generated.push({ name: filename, content: text });
+      }
+
+      // build metadata from the zip entries to match ConversionResponse shape
+      const data = {
+        total_files: generated.length,
+        results: generated.map(f => ({
+          filename: f.name.replace('_Mquery_FINAL.txt', '.sql'),
+          status: 'success',
+          output_filename: f.name,
+          list_prompts_found: 0,
+          date_prompts_found: 0,
+        })),
+      };
+
       ws().saved.mquery = data;
-      persist(); paint(); dlBtn.disabled = false; renderNav();
+      ws().saved._mqGenerated = generated;
+      persist(); paint(); renderNav();
       logActivity('M-Query: converted ' + data.total_files + ' file(s)');
-      toast('Converted ' + data.total_files + ' file(s)', 'success');
+      toast('Converted ' + data.total_files + ' file(s) — moving to AI Validation', 'success');
+      setTimeout(() => setActive('aivalidation'), 1200);
     } catch (err) {
       toast('API error: ' + err.message, 'error');
       result.innerHTML = '<div class="note error">Error: ' + escapeHtml(err.message) + '</div>';
     }
   });
 
-  dlBtn.addEventListener('click', async () => {
-    if (!sqlFiles.length || !mappingFile) { toast('Re-upload files to download ZIP', 'warn'); return; }
-    try {
-      await apiDownload('/stage3/convert/download', buildFormData(), 'mquery_outputs.zip');
-    } catch (err) {
-      toast('Download error: ' + err.message, 'error');
-    }
-  });
 
   document.getElementById('mq-clear').addEventListener('click', () => {
     sqlFiles = []; mappingFile = null; promptFile = null;
     delete ws().saved.mquery;
+    delete ws().saved._mqGenerated;
+    delete ws().saved.aivalidation;
     persist(); renderPage(); renderNav();
   });
 }

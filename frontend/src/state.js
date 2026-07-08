@@ -25,7 +25,6 @@ const state = {
   workspaces: { default: defaultWorkspace('Default') },
   activeWorkspace: 'default',
   theme: 'dark',
-  autoChain: true,
 };
 
 function ws() { return state.workspaces[state.activeWorkspace]; }
@@ -36,7 +35,6 @@ function persist() {
       workspaces: state.workspaces,
       activeWorkspace: state.activeWorkspace,
       theme: state.theme,
-      autoChain: state.autoChain,
       activeId: state.activeId,
     }));
   } catch (e) { console.warn('persist failed', e); }
@@ -50,7 +48,6 @@ function load() {
     if (parsed.workspaces && Object.keys(parsed.workspaces).length) state.workspaces = parsed.workspaces;
     state.activeWorkspace = parsed.activeWorkspace || 'default';
     state.theme = parsed.theme || 'dark';
-    state.autoChain = parsed.autoChain !== false;
     state.activeId = parsed.activeId || 'dashboard';
     Object.values(state.workspaces).forEach(w => {
       if (!w.customRules) w.customRules = defaultRules();
