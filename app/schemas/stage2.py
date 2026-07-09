@@ -33,3 +33,7 @@ class ColumnMappingResponse(BaseModel):
     low_confidence: int
     unmapped: int
     rows: List[ColumnMappingRow]
+
+class CombinedMappingResponse(BaseModel):
+    table: TableMappingResponse
+    column: ColumnMappingResponse

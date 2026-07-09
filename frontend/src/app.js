@@ -3,7 +3,7 @@ const APP_VERSION = 'v7';
 const pages = [
   { id: 'dashboard',     title: 'Dashboard',              subtitle: 'Overview of your BI transformation pipeline.',             icon: 'D', nav: 'Workspace' },
   { id: 'extract',       title: 'Extract Metadata',       subtitle: 'Parse .sql files to extract report name, ID, and query.', icon: 'E', nav: 'Pipeline', input: '.sql',        output: '.xlsx' },
-  { id: 'mapping',       title: 'Mapping',                subtitle: 'Map legacy tables and columns to EDH 2.0.',               icon: 'M', nav: 'Pipeline', input: '.xlsx',       output: '.xlsx' },
+  { id: 'mapping',       title: 'Mapping',                subtitle: 'Map legacy tables and columns to Databricks.',               icon: 'M', nav: 'Pipeline', input: '.xlsx',       output: '.xlsx' },
   { id: 'mquery',        title: 'M-Query Generation',     subtitle: 'Auto-generate Power Query (M) code for transformation.',  icon: 'Q', nav: 'Pipeline', input: '.sql / .txt', output: '.txt' },
   { id: 'aivalidation',  title: 'M-Query AI Validation',  subtitle: 'Fix and validate M-Query SQL using Databricks AI.',       icon: 'A', nav: 'Pipeline', input: 'auto',        output: '.txt' },
 ];
@@ -30,7 +30,6 @@ function init() {
   renderNav();
   renderFooter();
   renderPage();
-  document.getElementById('ai-fab').addEventListener('click', openAIModal);
   window.addEventListener('beforeunload', persist);
 }
 
@@ -124,18 +123,72 @@ function renderNav() {
 function renderFooter() {
   const el = document.getElementById('sidebar-footer');
   el.innerHTML = `
+    <div class="usage-btn" id="usage-btn">
+      <span>📖</span><span>Usage & Benefits</span>
+    </div>
     <div class="theme-toggle" id="theme-toggle">
       <span>${state.theme === 'dark' ? '🌙' : '☀'} ${state.theme === 'dark' ? 'Dark theme' : 'Light theme'}</span>
       <span class="theme-switch"></span>
     </div>
-    <div class="sidebar-meta">${APP_VERSION} · EDH 2.0 toolkit</div>
+    <div class="sidebar-meta">${APP_VERSION} · Databricks toolkit</div>
   `;
+  document.getElementById('usage-btn').addEventListener('click', openUsageModal);
   document.getElementById('theme-toggle').addEventListener('click', () => {
     state.theme = state.theme === 'dark' ? 'light' : 'dark';
     document.body.setAttribute('data-theme', state.theme);
     persist(); renderFooter(); toast('Theme: ' + state.theme, 'info');
   });
 }
+
+function openUsageModal() {
+  const steps = [
+    {
+      icon: 'E', color: 'var(--accent)', title: 'Step 1 — Extract Metadata',
+      how: 'Drop one or more <code>.sql</code> files. The tool parses every query, extracts report names, source tables, and source columns in one pass, and produces two Excel files: <strong>Final_Base_Tables</strong> and <strong>Final_Base_Tables_Columns</strong>.',
+      benefit: 'A human analyst reading through hundreds of SQL files to catalogue every table and column reference takes <strong>2–5 days</strong> per project. This step does it in <strong>seconds</strong>, with zero missed references.',
+    },
+    {
+      icon: 'M', color: 'var(--accent-2)', title: 'Step 2 — Mapping',
+      how: 'The <code>Final_Base_Tables_Columns</code> file from Step 1 is auto-loaded. Click <strong>Run Mapping</strong> — the tool queries Databricks to resolve every Cognos table to its Unity Catalog equivalent, then uses TF-IDF + fuzzy matching (Hungarian algorithm) to match each source column to the closest target column, with a confidence score.',
+      benefit: 'Manual cross-referencing of table and column names across two schemas requires a data engineer to open both systems side-by-side. For 50 tables with ~20 columns each that\'s <strong>~1,000 manual lookups</strong>. This step handles it automatically in minutes, with confidence scores flagging anything that needs human review.',
+    },
+    {
+      icon: 'Q', color: 'var(--accent-3)', title: 'Step 3 — M-Query Generation',
+      how: 'Upload the original <code>.sql</code> files. The converter rewrites each SQL query into Power Query M syntax compatible with Power BI, handling joins, filters, aliases, and subqueries. Results download as a ZIP of <code>.txt</code> files, one per report.',
+      benefit: 'Rewriting SQL to M-Query by hand requires knowledge of both languages and takes <strong>30–60 minutes per report</strong>. For a 200-report migration that\'s <strong>100–200 hours</strong> of developer time. This step generates all M-Queries in one batch.',
+    },
+    {
+      icon: 'A', color: 'var(--warn)', title: 'Step 4 — M-Query AI Validation',
+      how: 'The generated M-Queries are sent to a Databricks-hosted LLM which checks for syntax errors, invalid references, and logic issues. Each file gets a pass/fail result with an AI-fixed version where possible.',
+      benefit: 'Manual QA of generated code requires a developer to test each query in Power BI Desktop. AI validation catches the majority of issues <strong>before deployment</strong>, reducing back-and-forth cycles between migration and QA teams from weeks to hours.',
+    },
+  ];
+
+  const html = `
+    <h3 style="margin:0 0 4px;">📖 Usage & Benefits</h3>
+    <p style="margin:0 0 20px;">How each pipeline stage works and the time it saves vs. manual effort.</p>
+    <div class="usage-steps">
+      ${steps.map(s => `
+        <div class="usage-step">
+          <div class="usage-step-header">
+            <div class="usage-step-icon" style="background:${s.color};">${s.icon}</div>
+            <strong>${s.title}</strong>
+          </div>
+          <div class="usage-section-label">How to use</div>
+          <div class="usage-text">${s.how}</div>
+          <div class="usage-section-label" style="color:var(--success);">vs. Manual effort</div>
+          <div class="usage-text">${s.benefit}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="modal-actions"><button class="btn primary" id="usage-close">Got it</button></div>
+  `;
+
+  openModal(html);
+  document.querySelector('#modal-container .modal-card').style.maxWidth = '780px';
+  document.getElementById('usage-close').addEventListener('click', closeModal);
+}
+
 
 
 function setActive(id) {
@@ -207,7 +260,7 @@ function renderDashboard() {
       <div>
         <div class="page-badge">Workspace: ${escapeHtml(ws().name)}</div>
         <h1 class="page-title">Welcome back</h1>
-        <p class="page-subtitle">Monitor your transformation pipeline from legacy systems to EDH 2.0.</p>
+        <p class="page-subtitle">Monitor your transformation pipeline from legacy systems to Databricks.</p>
       </div>
       <div class="head-actions">
         <button class="btn outline sm" id="exp-audit">Export audit ZIP</button>

@@ -4,7 +4,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from app.services.table_mapper import run_table_mapping
 from app.services.column_mapper import run_column_mapping
-from app.schemas.stage2 import TableMappingResponse, ColumnMappingResponse
+from app.schemas.stage2 import TableMappingResponse, ColumnMappingResponse, CombinedMappingResponse
 
 router = APIRouter()
 
@@ -43,7 +43,6 @@ async def map_columns(
     df_cognos = pd.read_excel(io.BytesIO(await lineage_file.read()), engine="openpyxl")
     df_mapping = pd.read_excel(io.BytesIO(await mapping_file.read()), sheet_name="Sheet1", engine="openpyxl")
     results = run_column_mapping(df_cognos, df_mapping)
-    from app.core.config import settings
     matched = sum(1 for r in results if r["Match_Status"] == "MATCHED")
     low_conf = sum(1 for r in results if r["Match_Status"] == "LOW_CONFIDENCE")
     unmapped = sum(1 for r in results if r["Match_Status"] == "UNMAPPED_TABLE")
@@ -66,3 +65,29 @@ async def map_columns_download(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=Column_Mapping.xlsx"}
     )
+
+@router.post("/map-all", response_model=CombinedMappingResponse)
+async def map_all(lineage_file: UploadFile = File(...)):
+    if not lineage_file.filename.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Expected an .xlsx file")
+    raw = await lineage_file.read()
+    df_input = pd.read_excel(io.BytesIO(raw), engine="openpyxl")
+
+    table_results = run_table_mapping(df_input)
+    mapped = sum(1 for r in table_results if r["DB2_DB_Name"] != "Not Found")
+    table_resp = TableMappingResponse(
+        total=len(table_results), mapped=mapped,
+        not_found=len(table_results) - mapped, rows=table_results
+    )
+
+    df_mapping = pd.DataFrame(table_results)
+    col_results = run_column_mapping(df_input, df_mapping)
+    matched = sum(1 for r in col_results if r["Match_Status"] == "MATCHED")
+    low_conf = sum(1 for r in col_results if r["Match_Status"] == "LOW_CONFIDENCE")
+    unmapped = sum(1 for r in col_results if r["Match_Status"] == "UNMAPPED_TABLE")
+    col_resp = ColumnMappingResponse(
+        total=len(col_results), matched=matched,
+        low_confidence=low_conf, unmapped=unmapped, rows=col_results
+    )
+
+    return CombinedMappingResponse(table=table_resp, column=col_resp)
