@@ -4,8 +4,8 @@ import openpyxl
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List
-from app.services.sql_converter import load_mapping_from_workbook, load_date_clause_from_workbook, convert_sql_to_mquery
-from app.services.llm_sql_fixer import fix_sql_with_llm, extract_sql_from_mquery, inject_fixed_sql_into_mquery
+from app.services.sql_converter import (load_mapping_from_workbook, load_date_clause_from_workbook,load_prompt_definitions, convert_sql_to_mquery)
+from app.services.llm_mquery_validator import validate_mquery_with_llm
 from app.schemas.stage3 import ConversionResponse, LLMFixResponse, LLMFixResult
 
 router = APIRouter()
@@ -24,9 +24,12 @@ async def convert_sql_files(
     table_mapping, column_mapping = load_mapping_from_workbook(mapping_wb)
 
     date_clause = ""
+    prompt_definitions = {}
     if prompt_file:
         prompt_wb = openpyxl.load_workbook(io.BytesIO(await prompt_file.read()))
         date_clause = load_date_clause_from_workbook(prompt_wb)
+        prompt_definitions = load_prompt_definitions(prompt_wb)
+
 
     results = []
     for sql_file in sql_files:
@@ -49,9 +52,11 @@ async def convert_and_download(
     table_mapping, column_mapping = load_mapping_from_workbook(mapping_wb)
 
     date_clause = ""
+    prompt_definitions = {}
     if prompt_file:
         prompt_wb = openpyxl.load_workbook(io.BytesIO(await prompt_file.read()))
         date_clause = load_date_clause_from_workbook(prompt_wb)
+        prompt_definitions = load_prompt_definitions(prompt_wb)
 
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -59,7 +64,7 @@ async def convert_and_download(
             if not sql_file.filename.lower().endswith(".sql"):
                 continue
             raw = await sql_file.read()
-            output, meta = convert_sql_to_mquery(raw, sql_file.filename, table_mapping, column_mapping, date_clause)
+            output, meta = convert_sql_to_mquery(raw, sql_file.filename, table_mapping, column_mapping, date_clause, prompt_definitions)
             zf.writestr(meta["output_filename"], output)
 
     zip_buf.seek(0)
@@ -84,9 +89,11 @@ async def convert_and_fix(
     table_mapping, column_mapping = load_mapping_from_workbook(mapping_wb)
 
     date_clause = ""
+    prompt_definitions = {}
     if prompt_file:
         prompt_wb = openpyxl.load_workbook(io.BytesIO(await prompt_file.read()))
         date_clause = load_date_clause_from_workbook(prompt_wb)
+        prompt_definitions = load_prompt_definitions(prompt_wb)
 
     results = []
     for sql_file in sql_files:
@@ -95,13 +102,7 @@ async def convert_and_fix(
         raw = await sql_file.read()
         mquery, meta = convert_sql_to_mquery(raw, sql_file.filename, table_mapping, column_mapping, date_clause)
 
-        sql_portion = extract_sql_from_mquery(mquery)
-        if sql_portion:
-            fixed_sql, summary, success = fix_sql_with_llm(sql_portion)
-            final_mquery = inject_fixed_sql_into_mquery(mquery, fixed_sql) if success else mquery
-        else:
-            fixed_sql, summary, success = None, "Could not extract SQL from generated M-Query.", False
-            final_mquery = mquery
+        final_mquery, summary, success = validate_mquery_with_llm(mquery)
 
         results.append(LLMFixResult(
             filename=meta["filename"],
@@ -126,12 +127,7 @@ async def validate_mquery(
             continue
         mquery = (await mquery_file.read()).decode("utf-8", errors="replace")
 
-        sql_portion = extract_sql_from_mquery(mquery)
-        if sql_portion:
-            fixed_sql, summary, success = fix_sql_with_llm(sql_portion)
-            final_mquery = inject_fixed_sql_into_mquery(mquery, fixed_sql) if success else mquery
-        else:
-            summary, success, final_mquery = "Could not extract SQL from M-Query.", False, mquery
+        final_mquery, summary, success = validate_mquery_with_llm(mquery)
 
         results.append(LLMFixResult(
             filename=mquery_file.filename,

@@ -31,13 +31,27 @@ function ws() { return state.workspaces[state.activeWorkspace]; }
 
 function persist() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    const payload = {
       workspaces: state.workspaces,
       activeWorkspace: state.activeWorkspace,
       theme: state.theme,
       activeId: state.activeId,
-    }));
-  } catch (e) { console.warn('persist failed', e); }
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (e) {
+    // localStorage quota exceeded — strip large M-Query content and retry
+    console.warn('persist failed (quota?), retrying without mquery content', e);
+    try {
+      const slim = JSON.parse(JSON.stringify(state.workspaces));
+      Object.values(slim).forEach(w => { delete w.saved._mqGenerated; });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        workspaces: slim,
+        activeWorkspace: state.activeWorkspace,
+        theme: state.theme,
+        activeId: state.activeId,
+      }));
+    } catch (e2) { console.warn('persist retry also failed', e2); }
+  }
 }
 
 function load() {

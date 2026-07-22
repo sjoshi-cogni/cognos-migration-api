@@ -19,6 +19,7 @@ def read_text(raw: bytes) -> str:
 
 
 def strip_cognos_wrappers(sql: str) -> str:
+    s = re.sub(r'(?im)^\s*USE\s+\w[\w.]*\s*;\s*$', '', sql)
     s = re.sub(r"/\*.*?\*/", " ", sql, flags=re.S)
     s = re.sub(r"(?m)^\s*--.*?$", " ", s)
     s = s.replace("[", "").replace("]", "").replace('"', "")
