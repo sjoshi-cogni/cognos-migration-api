@@ -3,10 +3,13 @@ const APP_VERSION = 'v7';
 const pages = [
   { id: 'dashboard',     title: 'Dashboard',              subtitle: 'Overview of your BI transformation pipeline.',             icon: 'D', nav: 'Workspace' },
   { id: 'extract',       title: 'Extract Metadata',       subtitle: 'Parse .sql files to extract report name, ID, and query.', icon: 'E', nav: 'Pipeline', input: '.sql',        output: '.xlsx' },
-  { id: 'mapping',       title: 'Mapping',                subtitle: 'Map legacy tables and columns to Databricks.',               icon: 'M', nav: 'Pipeline', input: '.xlsx',       output: '.xlsx' },
+  { id: 'mapping',       title: 'Mapping',                subtitle: 'Map legacy tables and columns to Databricks.',             icon: 'M', nav: 'Pipeline', input: '.xlsx',       output: '.xlsx' },
   { id: 'mquery',        title: 'M-Query Generation',     subtitle: 'Auto-generate Power Query (M) code for transformation.',  icon: 'Q', nav: 'Pipeline', input: '.sql / .txt', output: '.txt' },
   { id: 'aivalidation',  title: 'M-Query AI Validation',  subtitle: 'Fix and validate M-Query SQL using Databricks AI.',       icon: 'A', nav: 'Pipeline', input: 'auto',        output: '.txt' },
+  { id: 'datavalidation', title: 'Data Validation',       subtitle: 'Coming soon.',                                            icon: 'V', nav: 'Pipeline', comingSoon: true },
+  { id: 'fmlineage',     title: 'FM Lineage',             subtitle: 'Coming soon.',                                            icon: 'F', nav: 'Pipeline', comingSoon: true },
 ];
+
 
 
 const pipelineIds = pages.filter(p => p.id !== 'dashboard').map(p => p.id);
@@ -102,13 +105,39 @@ function manageWorkspaces() {
   }));
 }
 
+// function renderNav() {
+//   const el = document.getElementById('sidebar-nav');
+//   const groups = {};
+//   pages.forEach(p => { groups[p.nav] = groups[p.nav] || []; groups[p.nav].push(p); });
+//   el.innerHTML = Object.entries(groups).map(([label, items]) => `
+//     <div class="nav-label">${label}</div>
+//     ${items.map(p => `
+//       <div class="step-item${p.id === state.activeId ? ' active' : ''}" data-id="${p.id}">
+//         <div class="step-icon">${p.icon}</div>
+//         <div class="step-info">
+//           <div class="step-title">${p.title}</div>
+//           <div class="step-subtitle">${p.id === 'dashboard' ? 'Home' : (p.input || '') + ' → ' + (p.output || '')}</div>
+//         </div>
+//         ${p.id !== 'dashboard' ? `<div class="step-status${ws().saved[p.id] ? ' done' : ''}"></div>` : ''}
+//       </div>`).join('')}`).join('');
+//   el.querySelectorAll('.step-item').forEach(item => item.addEventListener('click', () => setActive(item.dataset.id)));
+// }
+
 function renderNav() {
   const el = document.getElementById('sidebar-nav');
   const groups = {};
   pages.forEach(p => { groups[p.nav] = groups[p.nav] || []; groups[p.nav].push(p); });
   el.innerHTML = Object.entries(groups).map(([label, items]) => `
     <div class="nav-label">${label}</div>
-    ${items.map(p => `
+    ${items.map(p => p.comingSoon ? `
+      <div class="step-item coming-soon" title="Coming soon" style="opacity:0.4; cursor:not-allowed; pointer-events:none;">
+        <div class="step-icon" style="background:var(--surface-3);">${p.icon}</div>
+        <div class="step-info">
+          <div class="step-title">${p.title}</div>
+          <div class="step-subtitle">Coming soon</div>
+        </div>
+        <div class="step-status" style="font-size:10px; color:var(--text-mute);">🔒</div>
+      </div>` : `
       <div class="step-item${p.id === state.activeId ? ' active' : ''}" data-id="${p.id}">
         <div class="step-icon">${p.icon}</div>
         <div class="step-info">
@@ -117,8 +146,9 @@ function renderNav() {
         </div>
         ${p.id !== 'dashboard' ? `<div class="step-status${ws().saved[p.id] ? ' done' : ''}"></div>` : ''}
       </div>`).join('')}`).join('');
-  el.querySelectorAll('.step-item').forEach(item => item.addEventListener('click', () => setActive(item.dataset.id)));
+  el.querySelectorAll('.step-item:not(.coming-soon)').forEach(item => item.addEventListener('click', () => setActive(item.dataset.id)));
 }
+
 
 function renderFooter() {
   const el = document.getElementById('sidebar-footer');
@@ -145,17 +175,17 @@ function openUsageModal() {
     {
       icon: 'E', color: 'var(--accent)', title: 'Step 1 — Extract Metadata',
       how: 'Drop one or more <code>.sql</code> files. The tool parses every query, extracts report names, source tables, and source columns in one pass, and produces two Excel files: <strong>Final_Base_Tables</strong> and <strong>Final_Base_Tables_Columns</strong>.',
-      benefit: 'A human analyst reading through hundreds of SQL files to catalogue every table and column reference takes <strong>2–5 days</strong> per project. This step does it in <strong>seconds</strong>, with zero missed references.',
+      benefit: 'This step reduces that effort by <strong>70–90%</strong>, completing the same work in seconds with zero missed references.',
     },
     {
       icon: 'M', color: 'var(--accent-2)', title: 'Step 2 — Mapping',
       how: 'The <code>Final_Base_Tables_Columns</code> file from Step 1 is auto-loaded. Click <strong>Run Mapping</strong> — the tool queries Databricks to resolve every Cognos table to its Unity Catalog equivalent, then uses TF-IDF + fuzzy matching (Hungarian algorithm) to match each source column to the closest target column, with a confidence score.',
-      benefit: 'Manual cross-referencing of table and column names across two schemas requires a data engineer to open both systems side-by-side. For 50 tables with ~20 columns each that\'s <strong>~1,000 manual lookups</strong>. This step handles it automatically in minutes, with confidence scores flagging anything that needs human review.',
+      benefit: 'This step reduces that effort by <strong>50–60%</strong>, handling it automatically in minutes with confidence scores flagging anything that needs human review.',
     },
     {
       icon: 'Q', color: 'var(--accent-3)', title: 'Step 3 — M-Query Generation',
       how: 'Upload the original <code>.sql</code> files. The converter rewrites each SQL query into Power Query M syntax compatible with Power BI, handling joins, filters, aliases, and subqueries. Results download as a ZIP of <code>.txt</code> files, one per report.',
-      benefit: 'Rewriting SQL to M-Query by hand requires knowledge of both languages and takes <strong>30–60 minutes per report</strong>. For a 200-report migration that\'s <strong>100–200 hours</strong> of developer time. This step generates all M-Queries in one batch.',
+      benefit: 'Rewriting SQL to M-Query by hand requires knowledge of both languages and takes <strong>30–60 minutes per report</strong>. This step reduces that effort by <strong>50%</strong>, generating all M-Queries in one batch instead of hundreds of hours of developer time.',
     },
     {
       icon: 'A', color: 'var(--warn)', title: 'Step 4 — M-Query AI Validation',
@@ -189,23 +219,38 @@ function openUsageModal() {
   document.getElementById('usage-close').addEventListener('click', closeModal);
 }
 
-
-
 function setActive(id) {
   state.activeId = id; persist(); renderNav(); renderPage();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// function renderStepper(currentId) {
+//   return `<div class="stepper">${pipelineIds.map((id, i) => {
+//     const p = pages.find(x => x.id === id);
+//     const done = !!ws().saved[id], current = id === currentId;
+//     return `<div class="stepper-item${current ? ' current' : ''}${done ? ' done' : ''}" data-id="${id}">
+//       <div class="stepper-num">${done && !current ? '✓' : (i + 1)}</div>
+//       <span>${p.title}</span>
+//     </div>`;
+//   }).join('')}</div>`;
+// }
+
 function renderStepper(currentId) {
-  return `<div class="stepper">${pipelineIds.map((id, i) => {
-    const p = pages.find(x => x.id === id);
-    const done = !!ws().saved[id], current = id === currentId;
-    return `<div class="stepper-item${current ? ' current' : ''}${done ? ' done' : ''}" data-id="${id}">
-      <div class="stepper-num">${done && !current ? '✓' : (i + 1)}</div>
-      <span>${p.title}</span>
-    </div>`;
+  return `<div class="stepper">${pages.filter(p => p.id !== 'dashboard').map((p, i) => {
+    const done = !!ws().saved[p.id], current = p.id === currentId;
+    if (p.comingSoon) return `
+      <div class="stepper-item" style="opacity:0.35; cursor:not-allowed; pointer-events:none;" title="Coming soon">
+        <div class="stepper-num">🔒</div>
+        <span>${p.title}</span>
+      </div>`;
+    return `
+      <div class="stepper-item${current ? ' current' : ''}${done ? ' done' : ''}" data-id="${p.id}">
+        <div class="stepper-num">${done && !current ? '✓' : (i + 1)}</div>
+        <span>${p.title}</span>
+      </div>`;
   }).join('')}</div>`;
 }
+
 
 function bindStepper() {
   document.querySelectorAll('.stepper-item').forEach(el => el.addEventListener('click', () => setActive(el.dataset.id)));
